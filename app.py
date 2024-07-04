@@ -15,7 +15,8 @@ import os
 from pii_masking import mask_transcript
 import json
 from queue import Queue
-
+import gc
+import torch
 
 os.environ['TORCH_USE_CUDA_DSA'] = '1'
 
@@ -132,6 +133,15 @@ def transcribe_audio_worker(temp_audio_path, request_id, webhook_url, mask):
         # Mark task as done in the queue
         task_queue.get()
         task_queue.task_done()
+
+        # Clear memory
+        del audio_data
+        del result
+        del result_transcribe
+        del diarize_result
+        del final_result
+        torch.cuda.empty_cache()
+        gc.collect()
         
 
 # Protected endpoint - requires authentication
