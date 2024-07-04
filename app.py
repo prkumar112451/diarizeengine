@@ -37,7 +37,7 @@ YOUR_HF_TOKEN = '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'
 asr_options = {
     "suppress_numerals": True  # Set suppress_numerals to True here
 }
-model = whisperx.load_model("large-v2", device, compute_type=compute_type, asr_options=asr_options)
+model = whisperx.load_model("small", device, compute_type=compute_type, asr_options=asr_options)
 model_a, metadata = whisperx.load_align_model(language_code="en", device=device)
 diarize_model = whisperx.DiarizationPipeline(use_auth_token=YOUR_HF_TOKEN, device="cuda:0")
 
