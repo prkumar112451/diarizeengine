@@ -1,0 +1,13 @@
+PyJWT
+Flask
+torchaudio
+git+https://github.com/m-bain/whisperx.git
+ffmpeg-python
+flask-restful 
+flask-swagger
+requests
+fastapi
+uvicorn
+aiofiles
+spacy==3.7.2
+python-multipart
