@@ -31,8 +31,8 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 device = "cuda"
-batch_size = 16
-compute_type = "float16"
+batch_size = 8
+compute_type = "int8"
 YOUR_HF_TOKEN = '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'
 asr_options = {
     "suppress_numerals": True  # Set suppress_numerals to True here
