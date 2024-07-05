@@ -43,7 +43,7 @@ model_a, metadata = whisperx.load_align_model(language_code="en", device=device)
 diarize_model = whisperx.DiarizationPipeline(use_auth_token=YOUR_HF_TOKEN, device="cuda:0")
 
 # Configuration for thread pool
-max_concurrent_tasks = 1  # You can change this as needed
+max_concurrent_tasks = 2  # You can change this as needed
 executor = concurrent.futures.ThreadPoolExecutor(max_workers=max_concurrent_tasks)
 task_queue = Queue()
 SECRET_KEY = 'your_secret_key_here'
