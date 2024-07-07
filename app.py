@@ -17,6 +17,7 @@ import json
 from queue import Queue
 import gc
 import torch
+import subprocess
 
 os.environ['TORCH_USE_CUDA_DSA'] = '1'
 
@@ -48,6 +49,33 @@ executor = concurrent.futures.ThreadPoolExecutor(max_workers=max_concurrent_task
 task_queue = Queue()
 SECRET_KEY = 'your_secret_key_here'
 
+def get_gpu_metrics():
+    try:
+        # GPU metrics using nvidia-smi
+        result = subprocess.run(['nvidia-smi', '--query-gpu=utilization.gpu,temperature.gpu,memory.used,memory.total', '--format=json'], capture_output=True, text=True)
+        if result.returncode == 0:
+            gpu_data = json.loads(result.stdout)[0]  # Assuming a single GPU
+            gpu_utilization = gpu_data['utilization']['gpu']
+            gpu_temperature = gpu_data['temperature']['gpu']
+            gpu_memory_used = gpu_data['memory']['used']
+            gpu_memory_total = gpu_data['memory']['total']
+        else:
+            gpu_utilization = -1
+            gpu_temperature = -1
+            gpu_memory_used = -1
+            gpu_memory_total = -1
+    except FileNotFoundError:
+        gpu_utilization = -1
+        gpu_temperature = -1
+        gpu_memory_used = -1
+        gpu_memory_total = -1
+    
+    return {
+        'gpu_utilization': gpu_utilization,
+        'gpu_temperature': gpu_temperature,
+        'gpu_memory_used': gpu_memory_used,
+        'gpu_memory_total': gpu_memory_total
+    }
 
 # Define transcribe_audio_worker function
 def transcribe_audio_worker(temp_audio_path, request_id, webhook_url, mask):
@@ -143,6 +171,11 @@ def transcribe_audio_worker(temp_audio_path, request_id, webhook_url, mask):
         torch.cuda.empty_cache()
         gc.collect()
         
+
+@app.get('/gpu/metrics')
+def get_gpu_metrics_route():
+    gpu_metrics = get_gpu_metrics()
+    return gpu_metrics
 
 # Protected endpoint - requires authentication
 @app.post('/transcribe')
