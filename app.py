@@ -1,4 +1,4 @@
-from fastapi import FastAPI, File, UploadFile, HTTPException, BackgroundTasks, Form, Depends, Header
+from fastapi import FastAPI, File, UploadFile, HTTPException, Form
 import whisperx
 from datetime import datetime
 import logging
@@ -6,13 +6,9 @@ import traceback
 import uvicorn
 import os
 import requests
-from multiprocessing import set_start_method
 import uuid
 from typing import Optional
 import concurrent.futures
-import base64
-import os
-from pii_masking import mask_transcript
 import json
 from queue import Queue
 import gc
@@ -39,8 +35,10 @@ YOUR_HF_TOKEN = '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'
 asr_options = {
     "suppress_numerals": True  # Set suppress_numerals to True here
 }
-model = whisperx.load_model("small", device, compute_type=compute_type, asr_options=asr_options)
-model_a, metadata = whisperx.load_align_model(language_code="en", device=device)
+
+language_in_use = "en"
+model = whisperx.load_model("small", device, compute_type=compute_type, asr_options=asr_options, language=language_in_use)
+model_a, metadata = whisperx.load_align_model(language_code=language_in_use, device=device)
 diarize_model = whisperx.DiarizationPipeline(use_auth_token=YOUR_HF_TOKEN, device="cuda:0")
 
 # Configuration for thread pool
@@ -54,11 +52,11 @@ def get_gpu_metrics():
         # GPU metrics using nvidia-smi
         result = subprocess.run(['nvidia-smi', '--query-gpu=utilization.gpu,temperature.gpu,memory.used,memory.total', '--format=json'], capture_output=True, text=True)
         if result.returncode == 0:
-            gpu_data = json.loads(result.stdout)[0]  # Assuming a single GPU
-            gpu_utilization = gpu_data['utilization']['gpu']
-            gpu_temperature = gpu_data['temperature']['gpu']
-            gpu_memory_used = gpu_data['memory']['used']
-            gpu_memory_total = gpu_data['memory']['total']
+            gpu_data = json.loads(result.stdout)["gpu"][0]  # Assuming a single GPU
+            gpu_utilization = gpu_data['utilization.gpu']
+            gpu_temperature = gpu_data['temperature.gpu']
+            gpu_memory_used = gpu_data['memory.used']
+            gpu_memory_total = gpu_data['memory.total']
         else:
             gpu_utilization = -1
             gpu_temperature = -1
@@ -78,16 +76,19 @@ def get_gpu_metrics():
     }
 
 # Define transcribe_audio_worker function
-def transcribe_audio_worker(temp_audio_path, request_id, webhook_url, mask):
+def transcribe_audio_worker(temp_audio_path, request_id, webhook_url, mask, language_code):
+    global model, model_a, metadata, diarize_model, language_in_use
+
+    if language_code != language_in_use:
+        model = whisperx.load_model("small", device, compute_type=compute_type, asr_options=asr_options, language=language_code)
+        model_a, metadata = whisperx.load_align_model(language_code=language_code, device=device)
+        diarize_model = whisperx.DiarizationPipeline(use_auth_token=YOUR_HF_TOKEN, device="cuda:0")
+        language_in_use = language_code
+
     try:
         result_return = {}
         # Diarize segments
-        device = "cuda"
-        compute_type = "int8"
         audio_data = whisperx.load_audio(temp_audio_path)
-        # Initialize results
-        result_transcribe = None
-        diarize_result = None
 
         logger.info("about to start tasks %s for file %s", datetime.utcnow(), request_id)
 
@@ -99,8 +100,6 @@ def transcribe_audio_worker(temp_audio_path, request_id, webhook_url, mask):
         diarize_result = diarize_model(audio_data)
 
         logger.info("both tasks completed at %s for file %s", datetime.utcnow(), request_id)
-        #logger.info("transcribe result after alignment %s for file %s", result_transcribe["segments"], request_id)
-        #logger.info("diarization result %s for file %s", diarize_result, request_id)
 
         # Assign word speakers
         final_result = whisperx.assign_word_speakers(diarize_result, result_transcribe)
@@ -143,7 +142,7 @@ def transcribe_audio_worker(temp_audio_path, request_id, webhook_url, mask):
                                 word["score"] = 0.99
                     previous_word = word
         except Exception as e:
-            logger.error("Error masking transcript: %s", e)
+            logger.error("Error processing transcript: %s", e)
             traceback.print_exc()
 
         # Save result to a text file
@@ -170,7 +169,6 @@ def transcribe_audio_worker(temp_audio_path, request_id, webhook_url, mask):
         del final_result
         torch.cuda.empty_cache()
         gc.collect()
-        
 
 @app.get('/gpu/metrics')
 def get_gpu_metrics_route():
@@ -181,7 +179,8 @@ def get_gpu_metrics_route():
 @app.post('/transcribe')
 async def transcribe_audio(audio: UploadFile = File(...), 
                            webhook_url: Optional[str] = Form(None),
-                           mask: Optional[bool] = Form(False)):
+                           mask: Optional[bool] = Form(False),
+                           language_code: Optional[str] = Form("en")):
     try:
         logger.info("Processing root request at %s for file %s", datetime.utcnow(), audio.filename)
         logger.info(f"Received webhook_url: {webhook_url}")
@@ -202,7 +201,7 @@ async def transcribe_audio(audio: UploadFile = File(...),
         task_queue.put(request_id)
 
         # Submit the task to the thread pool
-        task_args = (temp_audio_path, request_id, webhook_url, mask)
+        task_args = (temp_audio_path, request_id, webhook_url, mask, language_code)
         executor.submit(transcribe_audio_worker, *task_args)
 
         # Log the current queue size after submitting the task
