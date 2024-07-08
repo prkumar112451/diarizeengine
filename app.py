@@ -49,32 +49,24 @@ SECRET_KEY = 'your_secret_key_here'
 
 def get_gpu_metrics():
     try:
-        # GPU metrics using nvidia-smi
-        result = subprocess.run(['nvidia-smi', '--query-gpu=utilization.gpu,temperature.gpu,memory.used,memory.total', '--format=json'], capture_output=True, text=True)
+        result = subprocess.run(['nvidia-smi', '--query-gpu=utilization.gpu,temperature.gpu,memory.used,memory.total', '--format=csv,noheader,nounits'], capture_output=True, text=True)
         if result.returncode == 0:
-            gpu_data = json.loads(result.stdout)["gpu"][0]  # Assuming a single GPU
-            gpu_utilization = gpu_data['utilization.gpu']
-            gpu_temperature = gpu_data['temperature.gpu']
-            gpu_memory_used = gpu_data['memory.used']
-            gpu_memory_total = gpu_data['memory.total']
+            output_lines = result.stdout.strip().split('\n')
+            gpu_data = []
+            for line in output_lines:
+                metrics = line.split(',')
+                gpu_data.append({
+                    'Utilisation': float(metrics[0]),
+                    'Temperature': float(metrics[1]),
+                    'MemoryUsed': int(metrics[2]),
+                    'MemoryTotal': int(metrics[3])
+                })
+            return gpu_data
         else:
-            gpu_utilization = -1
-            gpu_temperature = -1
-            gpu_memory_used = -1
-            gpu_memory_total = -1
-    except FileNotFoundError:
-        gpu_utilization = -1
-        gpu_temperature = -1
-        gpu_memory_used = -1
-        gpu_memory_total = -1
-    
-    return {
-        'gpu_utilization': gpu_utilization,
-        'gpu_temperature': gpu_temperature,
-        'gpu_memory_used': gpu_memory_used,
-        'gpu_memory_total': gpu_memory_total
-    }
-
+            print(f"Error running nvidia-smi: {result.stderr}")
+    except Exception as e:
+        print(f"Error: {e}")
+        
 # Define transcribe_audio_worker function
 def transcribe_audio_worker(temp_audio_path, request_id, webhook_url, mask, language_code):
     global model, model_a, metadata, diarize_model, language_in_use
