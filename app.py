@@ -63,9 +63,9 @@ def get_gpu_metrics():
                 })
             return gpu_data
         else:
-            print(f"Error running nvidia-smi: {result.stderr}")
+            logger.info(f"Error running nvidia-smi: {result.stderr}")
     except Exception as e:
-        print(f"Error: {e}")
+        logger.error("Error getting gpu: %s", e)
         
 # Define transcribe_audio_worker function
 def transcribe_audio_worker(temp_audio_path, request_id, webhook_url, mask, language_code):
