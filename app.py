@@ -73,9 +73,11 @@ def transcribe_audio_worker(temp_audio_path, request_id, webhook_url, mask, lang
     global model, model_a, metadata, diarize_model, language_in_use
 
     if language_code != language_in_use:
+        del model
+        torch.cuda.empty_cache()
+        gc.collect()
+        
         model = whisperx.load_model("small", device, compute_type=compute_type, asr_options=asr_options, language=language_code)
-        model_a, metadata = whisperx.load_align_model(language_code=language_code, device=device)
-        diarize_model = whisperx.DiarizationPipeline(use_auth_token=YOUR_HF_TOKEN, device="cuda:0")
         language_in_use = language_code
 
     try:
@@ -87,8 +89,13 @@ def transcribe_audio_worker(temp_audio_path, request_id, webhook_url, mask, lang
 
         # Perform transcription        
         result = model.transcribe(audio_data, batch_size=batch_size)
-        result_transcribe = whisperx.align(result["segments"], model_a, metadata, audio_data, device, return_char_alignments=False)
 
+        # Perform alignment only for english
+        if(language_in_use == 'en'):
+            result_transcribe = whisperx.align(result["segments"], model_a, metadata, audio_data, device, return_char_alignments=False)
+        else
+            result_transcribe = result
+            
         # Perform diarization
         diarize_result = diarize_model(audio_data)
 
