@@ -93,7 +93,7 @@ def transcribe_audio_worker(temp_audio_path, request_id, webhook_url, mask, lang
         # Perform alignment only for english
         if language_in_use == 'en':
             result_transcribe = whisperx.align(result["segments"], model_a, metadata, audio_data, device, return_char_alignments=False)
-        else
+        else:
             result_transcribe = result
             
         # Perform diarization
