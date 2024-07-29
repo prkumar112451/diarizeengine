@@ -45,7 +45,7 @@ def mask_entity_text(text, pattern_words, num_mask_count, date_mask_count):
     segment_id = 0
     segment_word_masking = {}
 
-    for token in doc:
+    for token in doc:        
         if token.text == '\n':
             segment_id += 1
             continue
@@ -60,7 +60,6 @@ def mask_entity_text(text, pattern_words, num_mask_count, date_mask_count):
                 start_char = token.idx
                 end_char = start_char + len(token.text)
                 masked_text[start_char:end_char] = '*' * (end_char - start_char)
-                
                 if segment_id not in segment_word_masking:
                     segment_word_masking[segment_id] = set()
                 segment_word_masking[segment_id].add(token.text)
@@ -84,13 +83,17 @@ def mask_entity_text(text, pattern_words, num_mask_count, date_mask_count):
     return "".join(masked_text), segment_word_masking
 
 # Function to mask words in a segment
-def mask_segment_words(segment, words_to_mask):
+def mask_segment_words(segment, words_to_mask):        
     masked_words = []
     for word in segment['words']:
-        if word['word'] in words_to_mask:
-            word['word'] = '*' * len(word['word'])
+        word_text = word['word']
+        for mask_word in words_to_mask:
+            if mask_word in word_text:
+                word_text = word_text.replace(mask_word, '*' * len(mask_word))
+        word['word'] = word_text
         masked_words.append(word)
     return masked_words
+
 
 def check_words_in_string(hashset, input_string):
     words = set(input_string.lower().split())
@@ -118,7 +121,8 @@ def mask_entity(concatenated_text, segments, entity):
         date_mask_count = 1
 
     masked_text, segment_word_masking = mask_entity_text(concatenated_text, pattern_words, num_mask_count, date_mask_count)
-            
+
+        
     # Update segments with masked text and words
     segment_lines = masked_text.split("\n")
     for i, segment in enumerate(segments):
@@ -129,6 +133,9 @@ def mask_entity(concatenated_text, segments, entity):
     return masked_text
 
 def mask_transcript(segments):
+    # Trim the text of each segment
+    for segment in segments:
+        segment["text"] = segment["text"].strip()
     concatenated_text = "\n".join([segment["text"] for segment in segments])
     hashset = {"credit", "card", "cvv"}
 
