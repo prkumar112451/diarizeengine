@@ -1,12 +1,16 @@
 # Use an official NVIDIA CUDA runtime as a parent image
 FROM nvidia/cuda:11.8.0-cudnn8-devel-ubuntu20.04
 
+# Set environment variable to suppress prompts
+ENV DEBIAN_FRONTEND=noninteractive
+
 # Install Python and necessary system dependencies
 RUN apt-get update && apt-get install -y \
     python3.10 \
     python3-pip \
     git \
     ffmpeg \
+    tzdata \
     && rm -rf /var/lib/apt/lists/*
 
 # Create a symbolic link for python3.10 as python
