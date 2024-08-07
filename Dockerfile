@@ -43,9 +43,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Install whisperX
 RUN pip install git+https://github.com/m-bain/whisperx.git --upgrade
 
-# Reinstall the specific version of faster-whisper after whisperx installation
-RUN pip install faster-whisper==1.0.0
-
 # Install the spaCy English model
 RUN python -m spacy download en_core_web_sm
 
