@@ -17,7 +17,7 @@ COPY . /app
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Reinstall the specific version of faster-whisper after whisperx installation
-RUN pip install faster-whisper==1.0.2
+RUN pip install faster-whisper==1.0.0
 
 # Install the spaCy English model
 RUN pip install numpy==1.26.4 spacy
