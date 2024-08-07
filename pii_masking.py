@@ -32,15 +32,10 @@ months_set = {
 def is_number(token):
     return token.like_num
 
-def mask_entity_text(text, pattern_words, num_mask_count, date_mask_count):
-    matcher = initialize_matcher(nlp, pattern_words)
-    doc = nlp(text)
-    matches = matcher(doc)
-    
+def mask_entity_text(text):
+    doc = nlp(text)    
     masked_text = list(text)
-    mask_next_numbers = False
-    numbers_count = 0
-    dates_count = 0
+    mask_next_numbers = True
     
     segment_id = 0
     segment_word_masking = {}
@@ -49,12 +44,7 @@ def mask_entity_text(text, pattern_words, num_mask_count, date_mask_count):
         if token.text == '\n':
             segment_id += 1
             continue
-        
-        if any(token.text.lower() == word.lower() for word in pattern_words):
-            mask_next_numbers = True
-            numbers_count = 0
-            dates_count = 0
-        
+                
         if mask_next_numbers:
             if is_number(token):
                 start_char = token.idx
@@ -62,34 +52,24 @@ def mask_entity_text(text, pattern_words, num_mask_count, date_mask_count):
                 masked_text[start_char:end_char] = '*' * (end_char - start_char)
                 if segment_id not in segment_word_masking:
                     segment_word_masking[segment_id] = set()
-                segment_word_masking[segment_id].add(token.text)
-                
-                numbers_count += 1
-                if numbers_count >= num_mask_count:
-                    mask_next_numbers = False
-            
+                segment_word_masking[segment_id].add(token.text) 
             elif token.text.lower() in months_set:
                 start_char = token.idx
                 end_char = start_char + len(token.text)
                 masked_text[start_char:end_char] = '*' * (end_char - start_char)
-                
-                dates_count += 1
-                if dates_count >= date_mask_count:
-                    mask_next_numbers = False
-            
-            if token.pos_ in ["NOUN", "PRON"] and token.text.lower() not in helper_words and dates_count >= date_mask_count and numbers_count >= num_mask_count:
-                mask_next_numbers = False
-    
+                                
     return "".join(masked_text), segment_word_masking
 
 # Function to mask words in a segment
 def mask_segment_words(segment, words_to_mask):        
     masked_words = []
     for word in segment['words']:
-        word_text = word['word']
+        word_text = word['word'].lower()
+                
         for mask_word in words_to_mask:
-            if mask_word in word_text:
-                word_text = word_text.replace(mask_word, '*' * len(mask_word))
+            if mask_word.lower() in word_text:
+                word_text = word_text.replace(mask_word.lower(), '*' * len(mask_word))
+                
         word['word'] = word_text
         masked_words.append(word)
     return masked_words
@@ -100,28 +80,8 @@ def check_words_in_string(hashset, input_string):
     return not hashset.isdisjoint(words)
 
 # Main function to mask entities in the transcript
-def mask_entity(concatenated_text, segments, entity):
-    pattern_words = []
-    num_mask_count = 16
-    date_mask_count = 0
-
-    if entity == 'credit':
-        pattern_words = ["credit", "card"]
-        num_mask_count = 16
-        date_mask_count = 0
-    
-    if entity == 'cvv':
-        pattern_words = ["cvv","digit","digits"]
-        num_mask_count = 4
-        date_mask_count = 1
-
-    if entity == 'expiry':
-        pattern_words = ["expiry","date"]
-        num_mask_count = 4
-        date_mask_count = 1
-
-    masked_text, segment_word_masking = mask_entity_text(concatenated_text, pattern_words, num_mask_count, date_mask_count)
-
+def mask_entity(concatenated_text, segments):
+    masked_text, segment_word_masking = mask_entity_text(concatenated_text)
         
     # Update segments with masked text and words
     segment_lines = masked_text.split("\n")
@@ -136,12 +96,9 @@ def mask_transcript(segments):
     # Trim the text of each segment
     for segment in segments:
         segment["text"] = segment["text"].strip()
-    concatenated_text = "\n".join([segment["text"] for segment in segments])
-    hashset = {"credit", "card", "cvv"}
+    concatenated_text = "\n".join([segment["text"] for segment in segments]).lower()
+    hashset = {"credit", "card", "cvv", "debit"}
 
     is_sensitive = check_words_in_string(hashset, concatenated_text)
-
     if is_sensitive:
-        masked_text = mask_entity(concatenated_text, segments, 'credit')
-        masked_text = mask_entity(masked_text, segments, 'cvv')
-        masked_text = mask_entity(masked_text, segments, 'expiry')
+        masked_text = mask_entity(concatenated_text, segments)
