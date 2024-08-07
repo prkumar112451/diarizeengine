@@ -1,10 +1,20 @@
-# Use an official Python runtime as a parent image
-FROM python:3.10
+# Use an official NVIDIA CUDA runtime as a parent image
+FROM nvidia/cuda:11.8.0-cudnn8-devel-ubuntu20.04
 
+# Install Python and necessary system dependencies
+RUN apt-get update && apt-get install -y \
+    python3.10 \
+    python3.10-venv \
+    python3-pip \
+    git \
+    ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create a symbolic link for python3.10 as python
+RUN ln -s /usr/bin/python3.10 /usr/bin/python
+
+# Upgrade pip, setuptools, and wheel
 RUN pip install --upgrade pip setuptools wheel cython
-
-# Install Git
-RUN apt-get update && apt-get install -y git ffmpeg
 
 # Set the working directory in the container
 WORKDIR /app
@@ -25,6 +35,5 @@ EXPOSE 80
 # Define environment variable
 ENV FLASK_APP=app.py
 
-# Run unicorn when the container launches
+# Run uvicorn when the container launches
 CMD ["uvicorn", "app:app", "--host=0.0.0.0", "--port=80"]
-
