@@ -41,8 +41,8 @@ RUN conda create --name whisperx python=3.10 && \
 ENV PATH /opt/conda/envs/whisperx/bin:$PATH
 RUN echo "source activate whisperx" > ~/.bashrc
 
-# Install PyTorch with CUDA 11.8 support
-RUN conda install pytorch==2.0.0 torchaudio==2.0.0 pytorch-cuda=11.8 -c pytorch -c nvidia
+# Install PyTorch with CUDA 11.8 support using pip to avoid conda compatibility issues
+RUN pip install torch==2.0.0+cu118 torchaudio==2.0.0+cu118 --extra-index-url https://download.pytorch.org/whl/cu118
 
 # Set the working directory in the container
 WORKDIR /app
