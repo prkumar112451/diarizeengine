@@ -1,6 +1,10 @@
 # Use the NVIDIA CUDA base image with Python 3.10, CUDA 11.8, and cuDNN 8
 FROM nvidia/cuda:11.8.0-cudnn8-devel-ubuntu20.04
 
+# Set environment variables to configure tzdata non-interactively
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=Etc/UTC
+
 # Install necessary tools and dependencies
 RUN apt-get update && \
     apt-get install -y software-properties-common && \
