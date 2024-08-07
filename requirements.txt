@@ -1,9 +1,9 @@
 PyJWT
 Flask
-torchaudio
+torchaudio==2.0.0
 git+https://github.com/m-bain/whisperx.git
 ffmpeg-python
-flask-restful 
+flask-restful
 flask-swagger
 requests
 fastapi
