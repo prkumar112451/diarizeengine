@@ -170,6 +170,14 @@ def transcribe_audio_worker(temp_audio_path, request_id, webhook_url, mask, lang
         torch.cuda.empty_cache()
         gc.collect()
 
+        # Delete the temporary audio file
+        try:
+            os.remove(temp_audio_path)
+            logger.info(f"Deleted temporary audio file: {temp_audio_path}")
+        except Exception as e:
+            logger.error("Error deleting temporary audio file: %s", e)
+
+
 @app.get('/gpu/metrics')
 def get_gpu_metrics_route():
     gpu_metrics = get_gpu_metrics()
