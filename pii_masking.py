@@ -33,31 +33,68 @@ def is_number(token):
     return token.like_num
 
 def mask_entity_text(text):
-    doc = nlp(text)    
+    doc = nlp(text)
     masked_text = list(text)
-    mask_next_numbers = True
+    
+    # Keywords for credit card detection
+    credit_card_keywords = {'credit', 'card', 'debit'}
+    
+    # Keywords for CVV, expiry detection
+    sensitive_keywords = {'cvv', 'expiry', 'expiration'}
     
     segment_id = 0
     segment_word_masking = {}
+    
+    mask_next_numbers = False
+    mask_credit_card_details = False
+    numbers_found = 0
+    current_index = 0
 
-    for token in doc:        
+    for i, token in enumerate(doc):
         if token.text == '\n':
             segment_id += 1
             continue
+        
+        # Search for credit card related words
+        if token.text.lower() in credit_card_keywords:
+            # Check the next 35 tokens
+            next_tokens = doc[i + 1:i + 36]  # Look ahead up to 35 words
+            numbers_found = 0
+
+            for j, next_token in enumerate(next_tokens):
+                if is_number(next_token):
+                    numbers_found += 1
                 
-        if mask_next_numbers:
-            if is_number(token):
-                start_char = token.idx
-                end_char = start_char + len(token.text)
-                masked_text[start_char:end_char] = '*' * (end_char - start_char)
-                if segment_id not in segment_word_masking:
-                    segment_word_masking[segment_id] = set()
-                segment_word_masking[segment_id].add(token.text) 
-            elif token.text.lower() in months_set:
-                start_char = token.idx
-                end_char = start_char + len(token.text)
-                masked_text[start_char:end_char] = '*' * (end_char - start_char)
-                                
+                if numbers_found >= 16:
+                    # Found at least 16 numbers, mask all the numbers in these 35 words
+                    for k in range(j + 1):  # Iterate over the first `j+1` tokens (i.e., within the range where numbers were found)
+                        token_to_mask = next_tokens[k]
+                        if is_number(token_to_mask):
+                            start_char = token_to_mask.idx
+                            end_char = start_char + len(token_to_mask.text)
+                            masked_text[start_char:end_char] = '*' * (end_char - start_char)
+                            if segment_id not in segment_word_masking:
+                                segment_word_masking[segment_id] = set()
+                            segment_word_masking[segment_id].add(token_to_mask.text)
+                    mask_credit_card_details = True  # Trigger that we've masked credit card details
+                    break
+        
+        # If credit card details were masked, look for CVV/expiry keywords
+        if mask_credit_card_details and token.text.lower() in sensitive_keywords:
+            next_tokens = doc[i + 1:i + 36]  # Check the next 35 tokens to find 6 numbers
+            numbers_to_mask = 0
+            for next_token in next_tokens:
+                if is_number(next_token):
+                    start_char = next_token.idx
+                    end_char = start_char + len(next_token.text)
+                    masked_text[start_char:end_char] = '*' * (end_char - start_char)
+                    if segment_id not in segment_word_masking:
+                        segment_word_masking[segment_id] = set()
+                    segment_word_masking[segment_id].add(next_token.text)
+                    numbers_to_mask += 1
+                if numbers_to_mask >= 6:
+                    break
+    
     return "".join(masked_text), segment_word_masking
 
 # Function to mask words in a segment
