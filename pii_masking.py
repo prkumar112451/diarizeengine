@@ -37,7 +37,7 @@ def mask_entity_text(text):
     masked_text = list(text)
     
     # Keywords for credit card detection
-    credit_card_keywords = {'credit', 'card', 'debit'}
+    credit_card_keywords = {'credit', 'card', 'debit', 'payment'}
     
     # Keywords for CVV, expiry detection
     sensitive_keywords = {'cvv', 'expiry', 'expiration'}
