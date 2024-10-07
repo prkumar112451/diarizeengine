@@ -153,14 +153,7 @@ def transcribe_audio_worker(temp_audio_path, request_id, webhook_url, mask, lang
         logger.info("Processing completed for request %s", request_id)
         if webhook_url is not None:
             requests.post(webhook_url, json=result_return)
-
-        # Delete the temporary audio file
-        try:
-            os.remove(temp_audio_path)
-            logger.info(f"Deleted temporary audio file: {temp_audio_path}")
-        except Exception as e:
-            logger.error("Error deleting temporary audio file: %s", e)
-
+            
     except Exception as e:
         logger.error("Error processing audio: %s", e)
         traceback.print_exc()
