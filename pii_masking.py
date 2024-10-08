@@ -58,7 +58,7 @@ def mask_entity_text(text):
         # Search for credit card related words
         if token.text.lower() in credit_card_keywords:
             # Check the next 35 tokens
-            next_tokens = doc[i + 1:i + 100]  # Look ahead up to 35 words
+            next_tokens = doc[i + 1:i + 50]  # Look ahead up to 35 words
             numbers_found = 0
 
             for j, next_token in enumerate(next_tokens):
