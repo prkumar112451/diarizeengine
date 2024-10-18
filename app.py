@@ -211,7 +211,7 @@ async def transcribe_audio(audio: UploadFile = File(...),
                            webhook_url: Optional[str] = Form(None),
                            mask: Optional[bool] = Form(False),
                            language_code: Optional[str] = Form("en"),
-                           use_diarization_model: Optional[bool] = Form(False),
+                           use_diarization_model: Optional[bool] = Form(True),
                            no_of_participants: Optional[int] = Form(2)):
     try:
         logger.info("Received file %s for transcription", audio.filename)
