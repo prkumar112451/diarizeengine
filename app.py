@@ -38,7 +38,7 @@ diarize_model = whisperx.DiarizationPipeline(use_auth_token=YOUR_HF_TOKEN, devic
 
 # Configuration for thread pool
 max_concurrent_tasks = 1
-executor = ThreadPoolExecutor(max_workers=max_concurrent_tasks)
+executor = concurrent.futures.ThreadPoolExecutor(max_workers=max_concurrent_tasks)
 task_queue = Queue()
 
 def is_stereo(wav_file_path: str) -> bool:
