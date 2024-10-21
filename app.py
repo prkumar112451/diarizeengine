@@ -182,7 +182,13 @@ def transcribe_audio_worker(audio_path, request_id, webhook_url, mask, language_
             final_result = whisperx.assign_word_speakers(diarize_result, result_transcribe)
             # Clear audio_data from memory
             del audio_data
-        
+
+        try : 
+            if mask:
+                mask_transcript(final_result['segments'])
+        except Exception as e:
+            logger.error("Error processing transcript attributes: %s", e)
+            
         result_return = {'transcription': final_result['segments'], 'requestID': request_id}
         process_transcription_attributes(result_return)
         if webhook_url:
