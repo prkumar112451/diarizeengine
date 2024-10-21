@@ -71,18 +71,45 @@ def assign_speaker(words, speaker_id):
 
 def merge_words_to_text(data):
     result, current_text, current_words, current_speaker = [], "", [], None
+    current_start, current_end = None, None
+
     for word in data['words']:
         if not current_words or word['speaker'] == current_speaker:
+            # Start time is the start time of the first word in the segment
+            if current_start is None:
+                current_start = word['start']
             current_text += word['word'] + " "
             current_words.append(word)
+            current_end = word['end']  # End time is continuously updated to the last word's end time
             current_speaker = word['speaker']
         else:
-            result.append({'Text': current_text.strip(), 'Speaker': current_speaker, 'words': current_words})
+            # Append merged data
+            result.append({
+                'text': current_text.strip(),
+                'speaker': current_speaker,
+                'words': current_words,
+                'start': current_start,
+                'end': current_end
+            })
+            # Reset for the new segment
             current_text = word['word'] + " "
             current_words = [word]
+            current_start = word['start']
+            current_end = word['end']
+            current_speaker = word['speaker']
+
+    # Add the last segment if any
     if current_words:
-        result.append({'Text': current_text.strip(), 'Speaker': current_speaker, 'words': current_words})
+        result.append({
+            'text': current_text.strip(),
+            'speaker': current_speaker,
+            'words': current_words,
+            'start': current_start,
+            'end': current_end
+        })
+    
     return result
+
 
 def merge_segments(output1, output2):
     words1 = [word for segment in output1['segments'] for word in segment['words']]
@@ -128,17 +155,17 @@ def transcribe_audio_worker(audio_path, request_id, webhook_url, mask, language_
         # Transcription logic
         final_result = {}
 
-        if use_diarization_model and is_stereo(audio_path):
+        if not use_diarization_model and is_stereo(audio_path):
             logger.info("Processing stereo audio for request %s", request_id)
             left_path, right_path = split_stereo(audio_path)
             output_left = process_transcription(left_path)
             output_right = process_transcription(right_path)
             merged_segments = merge_segments(output_left, output_right)
             final_result = {'segments': merge_words_to_text(merged_segments)}
-            os.remove(left_path)
-            os.remove(right_path)
+            logger.info("---------------- all done --------------")
 
         else:
+            logger.info('Processing mono audio for request')
             if language_code != language_in_use:
                 model = whisperx.load_model("small", device, compute_type=compute_type, asr_options=asr_options, language=language_code)
                 language_in_use = language_code
@@ -155,16 +182,9 @@ def transcribe_audio_worker(audio_path, request_id, webhook_url, mask, language_
             final_result = whisperx.assign_word_speakers(diarize_result, result_transcribe)
             # Clear audio_data from memory
             del audio_data
-
-        try : 
-            if mask:
-                mask_transcript(final_result['segments'])
-        except Exception as e:
-            logger.error("Error processing transcript attributes: %s", e)
         
         result_return = {'transcription': final_result['segments'], 'requestID': request_id}
         process_transcription_attributes(result_return)
-        
         if webhook_url:
             requests.post(webhook_url, json=result_return)
 
@@ -178,8 +198,6 @@ def transcribe_audio_worker(audio_path, request_id, webhook_url, mask, language_
         logger.error("Error processing audio for request %s: %s", request_id, e)
         raise HTTPException(status_code=500, detail=f"Error processing audio: {str(e)}")
     finally:
-        if os.path.exists(audio_path):
-            os.remove(audio_path)  # Cleanup original audio file
         task_queue.get()  # Mark task as done
         task_queue.task_done()
 
