@@ -23,6 +23,24 @@ RUN apt-get update && \
 # Upgrade pip, setuptools, wheel, and cython
 RUN pip install --upgrade pip setuptools wheel cython
 
+# Install conda
+RUN curl -o ~/miniconda.sh -O https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh && \
+    chmod +x ~/miniconda.sh && \
+    ~/miniconda.sh -b -p /opt/conda && \
+    rm ~/miniconda.sh
+
+# Clean conda cache non-interactively
+RUN /opt/conda/bin/conda clean --all --yes
+
+# Set path to conda
+ENV PATH=/opt/conda/bin:$PATH
+
+# Create and activate the whisperx environment
+RUN conda create --name whisperx python=3.10 && \
+    echo "source activate whisperx" > ~/.bashrc
+ENV PATH /opt/conda/envs/whisperx/bin:$PATH
+RUN echo "source activate whisperx" > ~/.bashrc
+
 # Install PyTorch with CUDA 11.8 support using pip to avoid conda compatibility issues
 RUN pip install torch==2.0.0+cu118 torchaudio==2.0.0+cu118 --extra-index-url https://download.pytorch.org/whl/cu118
 
@@ -40,16 +58,13 @@ RUN pip install git+https://github.com/m-bain/whisperx.git --upgrade
 
 # Reinstall the specific version of faster-whisper after whisperx installation
 RUN pip install faster-whisper==1.0.0
+RUN pip install ctranslate2==4.4.0
 
 # Install the spaCy English model
 RUN python -m spacy download en_core_web_sm
 
-# Set the LD_LIBRARY_PATH to include CUDA and cuDNN
-ENV LD_LIBRARY_PATH=/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64:$LD_LIBRARY_PATH
-
-# Enable TensorFloat-32 for improved performance
-ENV TORCH_ALLOW_TF32_CUBLAS=1
-ENV CUBLAS_WORKSPACE_CONFIG=:16:8
+# Set the LD_LIBRARY_PATH to point to the virtual environment's local CUDA 11.8 Python lib
+ENV LD_LIBRARY_PATH=${PWD}/.venv/lib/python3.10/site-packages/nvidia/cublas/lib:${PWD}/.venv/lib/python3.10/site-packages/nvidia/cudnn/lib:$LD_LIBRARY_PATH
 
 # Make port 80 available to the world outside this container
 EXPOSE 80
