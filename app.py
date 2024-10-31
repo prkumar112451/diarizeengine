@@ -130,8 +130,11 @@ def merge_segments(output1, output2):
     return merged_segments
 
 def process_transcription(audio_path: str):
+    logger.info("loading the audio")
     audio_data = whisperx.load_audio(audio_path)
+    logger.info("audio loaded")
     result = model.transcribe(audio_data, batch_size=batch_size)
+    logger.info("transcription complete")
     return whisperx.align(result["segments"], model_a, metadata, audio_data, device, return_char_alignments=False)
 
 def get_gpu_metrics():
@@ -167,9 +170,13 @@ def transcribe_audio_worker(audio_path, request_id, webhook_url, mask, language_
         if not use_diarization_model and is_stereo(audio_path):
             logger.info("Processing stereo audio for request %s", request_id)
             left_path, right_path = split_stereo(audio_path)
+            logger.info("Split the audio into 2 parts")
             output_left = process_transcription(left_path)
+            logger.info("transcription of left part complete")
             output_right = process_transcription(right_path)
+            logger.info("transcription of right part complete")
             merged_segments = merge_segments(output_left, output_right)
+            logger.info("merging the left and right")
             final_result = {'segments': merge_words_to_text(merged_segments)}
             logger.info("---------------- all done --------------")
 
