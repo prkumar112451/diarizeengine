@@ -43,14 +43,23 @@ task_queue = Queue()
 
 def is_stereo(wav_file_path: str) -> bool:
     try:
-        command = ['ffprobe', '-i', wav_file_path, '-show_streams', '-select_streams', 'a:0']
+        # Use ffprobe to get audio stream information
+        command = [
+            'ffprobe', '-v', 'error', '-select_streams', 'a:0', 
+            '-show_entries', 'stream=channels', '-of', 'default=nw=1:nk=1', wav_file_path
+        ]
+        # Run the subprocess and capture the output
         process = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        stream_info = process.stderr.splitlines()
-        for line in stream_info:
-            if 'Audio:' in line:
-                return 'stereo' in line
+        
+        # Get the number of channels from the output
+        channels = int(process.stdout.strip())
+        
+        # If the number of channels is 2, it's a stereo recording
+        return channels == 2
     except subprocess.SubprocessError as e:
         logger.error("Failed to determine if audio is stereo: %s", e)
+    except ValueError as e:
+        logger.error("Error parsing the number of channels: %s", e)
     return False
 
 def split_stereo(wav_file_path: str):
