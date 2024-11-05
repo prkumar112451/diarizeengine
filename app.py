@@ -167,7 +167,10 @@ def transcribe_audio_worker(audio_path, request_id, webhook_url, mask, language_
         # Transcription logic
         final_result = {}
 
-        if not use_diarization_model and is_stereo(audio_path):
+        is_audio_stereo = is_stereo(audio_path)
+        logger.info("Stereo type found as %s", is_audio_stereo)
+        
+        if not use_diarization_model and is_audio_stereo:
             logger.info("Processing stereo audio for request %s", request_id)
             left_path, right_path = split_stereo(audio_path)
             logger.info("Split the audio into 2 parts")
@@ -256,6 +259,8 @@ async def transcribe_audio(audio: UploadFile = File(...),
                            no_of_participants: Optional[int] = Form(2)):
     try:
         logger.info("Received file %s for transcription", audio.filename)
+        logger.info("UseDiarizationModel is set to %s", use_diarization_model)
+
         request_id = str(uuid.uuid4())
         temp_audio_path = f'/tmp/{request_id}_{audio.filename}'
         with open(temp_audio_path, 'wb') as f:
