@@ -114,7 +114,10 @@ def process_transcription(audio_path: str):
     result = model.transcribe(audio_data, batch_size=batch_size)
     logger.info("Transcription complete")
     aligned_result = whisperx.align(result["segments"], model_a, metadata, audio_data, device, return_char_alignments=False)
-    return improve_transcription(aligned_result)
+    improved_segments = improve_transcription(aligned_result['segments'])
+
+    # Return the improved segments wrapped in a dictionary to maintain structure
+    return {'segments': improved_segments}
     
 def transcribe_audio_worker(audio_path, request_id, webhook_url, mask, language_code, use_diarization_model):
     global model, model_a, metadata, diarize_model, language_in_use
