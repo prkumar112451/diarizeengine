@@ -2,19 +2,15 @@ from fastapi import FastAPI, File, UploadFile, HTTPException, Form
 import whisperx
 from datetime import datetime
 import logging
-import traceback
 import uvicorn
 import os
 import requests
 import uuid
 from typing import Optional
 import concurrent.futures
-import json
-from queue import Queue
-import gc
-import torch
 import subprocess
-from pii_masking import mask_transcript
+from queue import Queue
+import json
 
 os.environ['TORCH_USE_CUDA_DSA'] = '1'
 
@@ -43,18 +39,12 @@ task_queue = Queue()
 
 def is_stereo(wav_file_path: str) -> bool:
     try:
-        # Use ffprobe to get audio stream information
         command = [
-            'ffprobe', '-v', 'error', '-select_streams', 'a:0', 
+            'ffprobe', '-v', 'error', '-select_streams', 'a:0',
             '-show_entries', 'stream=channels', '-of', 'default=nw=1:nk=1', wav_file_path
         ]
-        # Run the subprocess and capture the output
         process = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        
-        # Get the number of channels from the output
         channels = int(process.stdout.strip())
-        
-        # If the number of channels is 2, it's a stereo recording
         return channels == 2
     except subprocess.SubprocessError as e:
         logger.error("Failed to determine if audio is stereo: %s", e)
@@ -74,89 +64,25 @@ def split_stereo(wav_file_path: str):
     subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     return left_output, right_output
 
-def assign_speaker(words, speaker_id):
-    for word in words:
-        word['speaker'] = speaker_id
-
-def merge_words_to_text(data):
-    result, current_text, current_words, current_speaker = [], "", [], None
-    current_start, current_end = None, None
-
-    for word in data['words']:
-        if not current_words or word['speaker'] == current_speaker:
-            # Start time is the start time of the first word in the segment
-            if current_start is None:
-                current_start = word['start']
-            current_text += word['word'] + " "
-            current_words.append(word)
-            current_end = word['end']  # End time is continuously updated to the last word's end time
-            current_speaker = word['speaker']
-        else:
-            # Append merged data
-            result.append({
-                'text': current_text.strip(),
-                'speaker': current_speaker,
-                'words': current_words,
-                'start': current_start,
-                'end': current_end
-            })
-            # Reset for the new segment
-            current_text = word['word'] + " "
-            current_words = [word]
-            current_start = word['start']
-            current_end = word['end']
-            current_speaker = word['speaker']
-
-    # Add the last segment if any
-    if current_words:
-        result.append({
-            'text': current_text.strip(),
-            'speaker': current_speaker,
-            'words': current_words,
-            'start': current_start,
-            'end': current_end
-        })
-    
-    return result
-
+def assign_speaker_to_segments(segments, speaker_id):
+    for segment in segments:
+        segment['speaker'] = speaker_id
+        for word in segment.get('words', []):
+            word['speaker'] = speaker_id
 
 def merge_segments(output1, output2):
-    words1 = [word for segment in output1['segments'] for word in segment['words']]
-    words2 = [word for segment in output2['segments'] for word in segment['words']]
-    assign_speaker(words1, "SPEAKER_00")
-    assign_speaker(words2, "SPEAKER_01")
-    merged_words = words1 + words2
-    merged_segments = {'words': sorted(merged_words, key=lambda x: x['start'])}
-    return merged_segments
+    assign_speaker_to_segments(output1['segments'], "SPEAKER_00")
+    assign_speaker_to_segments(output2['segments'], "SPEAKER_01")
+    all_segments = sorted(output1['segments'] + output2['segments'], key=lambda s: s['start'])
+    return all_segments
 
 def process_transcription(audio_path: str):
-    logger.info("loading the audio")
+    logger.info("Loading the audio")
     audio_data = whisperx.load_audio(audio_path)
-    logger.info("audio loaded")
+    logger.info("Audio loaded")
     result = model.transcribe(audio_data, batch_size=batch_size)
-    logger.info("transcription complete")
+    logger.info("Transcription complete")
     return whisperx.align(result["segments"], model_a, metadata, audio_data, device, return_char_alignments=False)
-
-def get_gpu_metrics():
-    try:
-        result = subprocess.run(
-            ['nvidia-smi', '--query-gpu=utilization.gpu,temperature.gpu,memory.used,memory.total', '--format=csv,noheader,nounits'],
-            capture_output=True, text=True
-        )
-        if result.returncode == 0:
-            gpu_data = []
-            for line in result.stdout.strip().split('\n'):
-                metrics = line.split(',')
-                gpu_data.append({
-                    'Utilisation': float(metrics[0]),
-                    'Temperature': float(metrics[1]),
-                    'MemoryUsed': int(metrics[2]),
-                    'MemoryTotal': int(metrics[3])
-                })
-            return gpu_data
-        logger.error(f"nvidia-smi error: {result.stderr}")
-    except Exception as e:
-        logger.error("Error fetching GPU metrics: %s", e)
 
 def transcribe_audio_worker(audio_path, request_id, webhook_url, mask, language_code, use_diarization_model):
     global model, model_a, metadata, diarize_model, language_in_use
@@ -164,25 +90,17 @@ def transcribe_audio_worker(audio_path, request_id, webhook_url, mask, language_
     try:
         logger.info("Started processing for request %s", request_id)
 
-        # Transcription logic
-        final_result = {}
-
         is_audio_stereo = is_stereo(audio_path)
         logger.info("Stereo type found as %s", is_audio_stereo)
-        
+
         if not use_diarization_model and is_audio_stereo:
             logger.info("Processing stereo audio for request %s", request_id)
             left_path, right_path = split_stereo(audio_path)
             logger.info("Split the audio into 2 parts")
             output_left = process_transcription(left_path)
-            logger.info("transcription of left part complete")
             output_right = process_transcription(right_path)
-            logger.info("transcription of right part complete")
             merged_segments = merge_segments(output_left, output_right)
-            logger.info("merging the left and right")
-            final_result = {'segments': merge_words_to_text(merged_segments)}
-            logger.info("---------------- all done --------------")
-
+            final_result = {'segments': merged_segments}
         else:
             logger.info('Processing mono audio for request')
             if language_code != language_in_use:
@@ -199,17 +117,16 @@ def transcribe_audio_worker(audio_path, request_id, webhook_url, mask, language_
 
             diarize_result = diarize_model(audio_data)
             final_result = whisperx.assign_word_speakers(diarize_result, result_transcribe)
-            # Clear audio_data from memory
-            del audio_data
 
-        try : 
+        try:
             if mask:
                 mask_transcript(final_result['segments'])
         except Exception as e:
             logger.error("Error processing transcript attributes: %s", e)
-            
+
         result_return = {'transcription': final_result['segments'], 'requestID': request_id}
         process_transcription_attributes(result_return)
+        
         if webhook_url:
             requests.post(webhook_url, json=result_return)
 
@@ -223,7 +140,7 @@ def transcribe_audio_worker(audio_path, request_id, webhook_url, mask, language_
         logger.error("Error processing audio for request %s: %s", request_id, e)
         raise HTTPException(status_code=500, detail=f"Error processing audio: {str(e)}")
     finally:
-        task_queue.get()  # Mark task as done
+        task_queue.get()
         task_queue.task_done()
 
 def process_transcription_attributes(result_return):
@@ -231,18 +148,9 @@ def process_transcription_attributes(result_return):
         for segment in result_return["transcription"]:
             if "speaker" not in segment:
                 segment["speaker"] = "SPEAKER_00"
-            previous_word = None
             for word in segment["words"]:
                 if "speaker" not in word:
                     word["speaker"] = segment["speaker"]
-                if "start" not in word or "end" not in word or "score" not in word:
-                    if previous_word:
-                        word.update({"start": previous_word["end"], "end": previous_word["end"], "score": 0.99})
-                    else:
-                        next_word = next((w for w in segment["words"] if "start" in w and "end" in w), None)
-                        if next_word:
-                            word.update({"start": next_word["start"], "end": next_word["start"], "score": 0.99})
-                previous_word = word
     except Exception as e:
         logger.error("Error processing transcript attributes: %s", e)
 
@@ -268,7 +176,6 @@ async def transcribe_audio(audio: UploadFile = File(...),
 
         logger.info("Temp file created at %s for file %s", datetime.utcnow(), audio.filename)
 
-        # Submit task to executor
         task_queue.put(request_id)
 
         task_args = (temp_audio_path, request_id, webhook_url, mask, language_code, use_diarization_model)
@@ -291,7 +198,7 @@ async def update_batch_size(new_batch_size: int):
 async def update_concurrent_tasks(new_max_concurrent_tasks: int):
     global executor
     executor.shutdown(wait=False)
-    executor = ThreadPoolExecutor(max_workers=new_max_concurrent_tasks)
+    executor = concurrent.futures.ThreadPoolExecutor(max_workers=new_max_concurrent_tasks)
     logger.info(f"Max concurrent tasks updated to {new_max_concurrent_tasks}")
     return {"message": f"Max concurrent tasks updated to {new_max_concurrent_tasks}"}
 
