@@ -77,14 +77,45 @@ def merge_segments(output1, output2):
     all_segments = sorted(output1['segments'] + output2['segments'], key=lambda s: s['start'])
     return all_segments
 
+def improve_transcription(transcription):
+    new_segments = []
+    
+    for segment in transcription:
+        words = segment["words"]
+        current_segment = {"start": words[0]["start"], "end": None, "text": "", "words": [], "speaker": segment["speaker"]}
+        
+        for i in range(len(words) - 1):
+            current_word = words[i]
+            next_word = words[i + 1]
+            
+            current_segment["words"].append(current_word)
+            current_segment["text"] += current_word["word"] + " "
+            
+            # Check if the gap between current and next word is more than 2 seconds
+            if next_word["start"] - current_word["end"] > 2.0:
+                current_segment["end"] = current_word["end"]
+                new_segments.append(current_segment)
+                
+                # Start a new segment
+                current_segment = {"start": next_word["start"], "end": None, "text": "", "words": [], "speaker": segment["speaker"]}
+        
+        # Add the last word and finalize the segment
+        current_segment["words"].append(words[-1])
+        current_segment["text"] += words[-1]["word"]
+        current_segment["end"] = words[-1]["end"]
+        new_segments.append(current_segment)
+    
+    return new_segments
+
 def process_transcription(audio_path: str):
     logger.info("Loading the audio")
     audio_data = whisperx.load_audio(audio_path)
     logger.info("Audio loaded")
     result = model.transcribe(audio_data, batch_size=batch_size)
     logger.info("Transcription complete")
-    return whisperx.align(result["segments"], model_a, metadata, audio_data, device, return_char_alignments=False)
-
+    aligned_result = whisperx.align(result["segments"], model_a, metadata, audio_data, device, return_char_alignments=False)
+    return improve_transcription(aligned_result)
+    
 def transcribe_audio_worker(audio_path, request_id, webhook_url, mask, language_code, use_diarization_model):
     global model, model_a, metadata, diarize_model, language_in_use
 
