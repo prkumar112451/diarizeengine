@@ -13,15 +13,6 @@ def initialize_matcher(nlp, pattern_words):
         matcher.add("KEYWORDS", [pattern])
     return matcher
 
-# List of common helper words used in day-to-day English
-helper_words = {
-    "yeah", "sure", "okay", "right", "cool", "uh", "um", "uh-huh", "hmm", "oh", "ah",
-    "well", "so", "like", "just", "actually", "basically", "really", "you know", "I mean",
-    "sort of", "kind of", "basically", "literally", "really", "seriously", "totally",
-    "obviously", "clearly", "definitely", "exactly", "absolutely", "certainly",
-    "definitely", "indeed", "naturally", "undoubtedly", "yes", "no", "can", "you", "repeat", "that", "what's", "what", "ok", "hmm", "oh"
-}
-
 # Set of months in full name and abbreviation (case insensitive)
 months_set = {
     "january", "jan", "february", "feb", "march", "mar", "april", "apr",
@@ -31,6 +22,9 @@ months_set = {
 
 def is_number(token):
     return token.like_num
+
+def is_month(token):
+    return token.text.lower() in months_set
 
 def mask_entity_text(text):
     doc = nlp(text)
@@ -45,11 +39,8 @@ def mask_entity_text(text):
     segment_id = 0
     segment_word_masking = {}
     
-    mask_next_numbers = False
     mask_credit_card_details = False
-    numbers_found = 0
-    current_index = 0
-
+    
     for i, token in enumerate(doc):
         if token.text == '\n':
             segment_id += 1
@@ -58,7 +49,7 @@ def mask_entity_text(text):
         # Search for credit card related words
         if token.text.lower() in credit_card_keywords:
             # Check the next 35 tokens
-            next_tokens = doc[i + 1:i + 50]  # Look ahead up to 35 words
+            next_tokens = doc[i + 1:i + 50]
             numbers_found = 0
 
             for j, next_token in enumerate(next_tokens):
@@ -66,8 +57,7 @@ def mask_entity_text(text):
                     numbers_found += 1
                 
                 if numbers_found >= 16:
-                    # Found at least 16 numbers, mask all the numbers in these 35 words
-                    for k in range(j + 1):  # Iterate over the first `j+1` tokens (i.e., within the range where numbers were found)
+                    for k in range(j + 1):
                         token_to_mask = next_tokens[k]
                         if is_number(token_to_mask):
                             start_char = token_to_mask.idx
@@ -76,15 +66,15 @@ def mask_entity_text(text):
                             if segment_id not in segment_word_masking:
                                 segment_word_masking[segment_id] = set()
                             segment_word_masking[segment_id].add(token_to_mask.text)
-                    mask_credit_card_details = True  # Trigger that we've masked credit card details
+                    mask_credit_card_details = True
                     break
         
         # If credit card details were masked, look for CVV/expiry keywords
         if mask_credit_card_details and token.text.lower() in sensitive_keywords:
-            next_tokens = doc[i + 1:i + 36]  # Check the next 35 tokens to find 6 numbers
+            next_tokens = doc[i + 1:i + 36]
             numbers_to_mask = 0
             for next_token in next_tokens:
-                if is_number(next_token):
+                if is_number(next_token) or is_month(next_token):
                     start_char = next_token.idx
                     end_char = start_char + len(next_token.text)
                     masked_text[start_char:end_char] = '*' * (end_char - start_char)
