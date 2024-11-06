@@ -82,7 +82,7 @@ def improve_transcription(transcription):
     
     for segment in transcription:
         words = segment["words"]
-        current_segment = {"start": words[0]["start"], "end": None, "text": "", "words": [], "speaker": segment["speaker"]}
+        current_segment = {"start": words[0]["start"], "end": None, "text": "", "words": []}
         
         for i in range(len(words) - 1):
             current_word = words[i]
@@ -97,7 +97,7 @@ def improve_transcription(transcription):
                 new_segments.append(current_segment)
                 
                 # Start a new segment
-                current_segment = {"start": next_word["start"], "end": None, "text": "", "words": [], "speaker": segment["speaker"]}
+                current_segment = {"start": next_word["start"], "end": None, "text": "", "words": []}
         
         # Add the last word and finalize the segment
         current_segment["words"].append(words[-1])
