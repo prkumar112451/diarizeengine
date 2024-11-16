@@ -11,6 +11,8 @@ import concurrent.futures
 import subprocess
 from queue import Queue
 import json
+import gc
+import torch
 from pii_masking import mask_transcript
 
 os.environ['TORCH_USE_CUDA_DSA'] = '1'
