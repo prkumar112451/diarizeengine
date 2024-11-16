@@ -29,7 +29,7 @@ language_in_use = "en"
 YOUR_HF_TOKEN = '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'
 
 # Load models
-model = whisperx.load_model("deepdml/faster-whisper-large-v3-turbo-ct2", device, compute_type=compute_type, asr_options=asr_options, language=language_in_use)
+model = whisperx.load_model("small", device, compute_type=compute_type, asr_options=asr_options, language=language_in_use)
 model_a, metadata = whisperx.load_align_model(language_code=language_in_use, device=device)
 diarize_model = whisperx.DiarizationPipeline(use_auth_token=YOUR_HF_TOKEN, device=device)
 
