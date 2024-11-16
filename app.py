@@ -108,17 +108,39 @@ def improve_transcription(transcription):
     return new_segments
 
 def process_transcription(audio_path: str):
-    logger.info("Loading the audio")
-    audio_data = whisperx.load_audio(audio_path)
-    logger.info("Audio loaded")
-    result = model.transcribe(audio_data, batch_size=batch_size)
-    logger.info("Transcription complete")
-    aligned_result = whisperx.align(result["segments"], model_a, metadata, audio_data, device, return_char_alignments=False)
-    improved_segments = improve_transcription(aligned_result['segments'])
-
-    # Return the improved segments wrapped in a dictionary to maintain structure
-    return {'segments': improved_segments}
+    try:
+        logger.info("Loading the audio")
+        audio_data = whisperx.load_audio(audio_path)
+        logger.info("Audio loaded")
+        
+        # Transcribe the audio
+        result = model.transcribe(audio_data, batch_size=batch_size)
+        logger.info("Transcription complete")
+        
+        # Align transcription with the audio data
+        aligned_result = whisperx.align(result["segments"], model_a, metadata, audio_data, device, return_char_alignments=False)
+        
+        # Improve segments and return the result
+        improved_segments = improve_transcription(aligned_result['segments'])
+        return {'segments': improved_segments}
     
+    except Exception as e:
+        logger.error("Error processing transcription: %s", e)  # Updated error message
+        return {'segments': []}  # Return an empty result to avoid breaking the pipeline
+    
+    finally:
+        # Delete variables if they were created
+        if 'audio_data' in locals():
+            del audio_data
+        if 'result' in locals():
+            del result
+        if 'aligned_result' in locals():
+            del aligned_result
+        
+        # Clear GPU memory and run garbage collection
+        torch.cuda.empty_cache()
+        gc.collect()
+        
 def transcribe_audio_worker(audio_path, request_id, webhook_url, mask, language_code, use_diarization_model):
     global model, model_a, metadata, diarize_model, language_in_use
 
@@ -175,6 +197,15 @@ def transcribe_audio_worker(audio_path, request_id, webhook_url, mask, language_
         logger.error("Error processing audio for request %s: %s", request_id, e)
         raise HTTPException(status_code=500, detail=f"Error processing audio: {str(e)}")
     finally:
+        torch.cuda.empty_cache()
+        gc.collect()
+
+        del audio_data
+        del result
+        del result_transcribe
+        del diarize_result
+        del final_result
+
         task_queue.get()
         task_queue.task_done()
 
