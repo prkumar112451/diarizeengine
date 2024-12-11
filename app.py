@@ -228,7 +228,8 @@ def transcribe_audio_worker(audio_path, request_id, webhook_url, mask, language_
 
             diarize_result = diarize_model(audio_data)
             final_result = whisperx.assign_word_speakers(diarize_result, result_transcribe)
-
+            final_result['segments'] = process_segment_words(final_result['segments'])
+            final_result['segments'] = remove_duplicate_segments(final_result['segments'])
         try:
             if mask:
                 mask_transcript(final_result['segments'])
