@@ -40,6 +40,55 @@ max_concurrent_tasks = 1
 executor = concurrent.futures.ThreadPoolExecutor(max_workers=max_concurrent_tasks)
 task_queue = Queue()
 
+def remove_duplicate_segments(segments):
+    filtered_segments = []
+    for i, segment in enumerate(segments):
+        if i == 0 or not (
+            segment['text'] == segments[i - 1]['text'] and 
+            segment['speaker'] == segments[i - 1]['speaker']
+        ):
+            filtered_segments.append(segment)
+    return filtered_segments
+
+def process_segment_words(segments):
+    from collections import Counter
+
+    def clean_segment(segment):
+        # Split words from the 'text' field and count occurrences
+        word_counts = Counter(word.lower() for word in segment['text'].split())
+        
+        # Identify words repeated more than 5 times
+        repeated_words = {word for word, count in word_counts.items() if count > 5}
+
+        # Initialize processed text and words array
+        processed_text = []
+        processed_words = []
+        seen_repeated_words = set()
+
+        # Process the 'text' and 'words' arrays
+        for word_info in segment['words']:
+            word_lower = word_info['word'].lower()
+
+            if word_lower in repeated_words:
+                if word_lower not in seen_repeated_words:
+                    # Keep the first instance of repeated word
+                    seen_repeated_words.add(word_lower)
+                    processed_text.append(word_info['word'])
+                    processed_words.append(word_info)
+            else:
+                # Keep non-repeated words
+                processed_text.append(word_info['word'])
+                processed_words.append(word_info)
+
+        # Update segment with processed text and words
+        segment['text'] = ' '.join(processed_text)
+        segment['words'] = processed_words
+
+        return segment
+
+    # Process each segment
+    return [clean_segment(segment) for segment in segments]
+
 def is_stereo(wav_file_path: str) -> bool:
     try:
         command = [
@@ -123,7 +172,10 @@ def process_transcription(audio_path: str):
         aligned_result = whisperx.align(result["segments"], model_a, metadata, audio_data, device, return_char_alignments=False)
         
         # Improve segments and return the result
-        improved_segments = improve_transcription(aligned_result['segments'])
+        segment_wordcleaned = process_segment_words(aligned_result['segments'])
+        segments_cleaned = remove_duplicate_segments(segment_wordcleaned)
+        improved_segments = improve_transcription(segments_cleaned)
+        
         return {'segments': improved_segments}
     
     except Exception as e:
