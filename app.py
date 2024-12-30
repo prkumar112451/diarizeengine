@@ -28,7 +28,7 @@ batch_size = 8
 compute_type = "int8"
 asr_options = {"suppress_numerals": True}
 language_in_use = "en"
-YOUR_HF_TOKEN = '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'
+YOUR_HF_TOKEN = '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'
 
 # Load models
 model = whisperx.load_model("small", device, compute_type=compute_type, asr_options=asr_options, language=language_in_use)
