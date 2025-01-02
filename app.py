@@ -255,7 +255,14 @@ def transcribe_audio_worker(audio_path, request_id, webhook_url, mask, language_
         
     except Exception as e:
         logger.error("Error processing audio for request %s: %s", request_id, e)
-        raise HTTPException(status_code=500, detail=f"Error processing audio: {str(e)}")
+        result_return = {'transcription': [], 'requestID': request_id}
+        if webhook_url:
+            requests.post(webhook_url, json=result_return)
+
+        result_file_path = f'/tmp/{request_id}.txt'
+        with open(result_file_path, 'w') as result_file:
+            json.dump(result_return, result_file)
+            raise HTTPException(status_code=500, detail=f"Error processing audio: {str(e)}")
     finally:
         torch.cuda.empty_cache()
         gc.collect()
