@@ -42,7 +42,7 @@ ENV PATH /opt/conda/envs/whisperx/bin:$PATH
 RUN echo "source activate whisperx" > ~/.bashrc
 
 # Install PyTorch with CUDA 11.8 support using pip to avoid conda compatibility issues
-RUN pip install torch==2.2.0+cu118 torchaudio==2.2.0+cu118 --extra-index-url https://download.pytorch.org/whl/cu118
+RUN pip install torch==2.0.0+cu118 torchaudio==2.0.0+cu118 --extra-index-url https://download.pytorch.org/whl/cu118
 
 # Set the working directory in the container
 WORKDIR /app
@@ -52,6 +52,9 @@ COPY . /app
 
 # Install dependencies from requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
+
+RUN pip install faster-whisper==1.0.0
+RUN pip install ctranslate2==4.4.0
 
 # Install the spaCy English model
 RUN python -m spacy download en_core_web_sm
