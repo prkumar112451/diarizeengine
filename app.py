@@ -172,11 +172,14 @@ def process_transcription(audio_path: str):
         aligned_result = whisperx.align(result["segments"], model_a, metadata, audio_data, device, return_char_alignments=False)
         
         # Improve segments and return the result
-        segment_wordcleaned = process_segment_words(aligned_result['segments'])
-        segments_cleaned = remove_duplicate_segments(segment_wordcleaned)
-        improved_segments = improve_transcription(segments_cleaned)
+        try:
+            aligned_result['segments'] = process_segment_words(aligned_result['segments'])
+            aligned_result['segments'] = remove_duplicate_segments(aligned_result['segments'])
+            aligned_result['segments'] = improve_transcription(aligned_result['segments'])
+        except Exception as e:
+            logger.error("Error processing subprocessing: %s", e) 
         
-        return {'segments': improved_segments}
+        return {'segments': aligned_result['segments']}
     
     except Exception as e:
         logger.error("Error processing transcription: %s", e)  # Updated error message
