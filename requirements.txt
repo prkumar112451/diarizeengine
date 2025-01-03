@@ -1,6 +1,6 @@
 PyJWT
 Flask
-torchaudio
+torchaudio==2.2.0
 git+https://github.com/m-bain/whisperx.git@v3.3.0
 ffmpeg-python
 flask-restful
