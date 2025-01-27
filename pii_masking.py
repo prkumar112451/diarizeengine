@@ -53,6 +53,9 @@ def mask_entity_text(text):
             numbers_found = 0
 
             for j, next_token in enumerate(next_tokens):
+                if next_token.is_punct or next_token.is_space:
+                    continue
+
                 if is_number(next_token):
                     numbers_found += 1
                 
