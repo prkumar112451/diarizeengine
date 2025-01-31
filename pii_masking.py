@@ -26,6 +26,19 @@ def is_number(token):
 def is_month(token):
     return token.text.lower() in months_set
 
+def find_next_token_index(doc, start_idx, n_tokens):
+    """Find the index of the token that represents the next n_tokens excluding punctuation and spaces."""
+    valid_tokens_found = 0
+    current_idx = start_idx
+    
+    while valid_tokens_found < n_tokens and current_idx < len(doc):
+        token = doc[current_idx]
+        if not token.is_punct and not token.is_space:
+            valid_tokens_found += 1
+        current_idx += 1
+    
+    return current_idx
+
 def mask_entity_text(text):
     doc = nlp(text)
     masked_text = list(text)
@@ -48,14 +61,13 @@ def mask_entity_text(text):
         
         # Search for credit card related words
         if token.text.lower() in credit_card_keywords:
-            # Check the next 35 tokens
-            next_tokens = doc[i + 1:i + 50]
+            # Find the index of the token after the next 50 non-punctuation tokens
+            end_idx = find_next_token_index(doc, i + 1, 50)
+            next_tokens = doc[i + 1:end_idx]
+            
             numbers_found = 0
 
             for j, next_token in enumerate(next_tokens):
-                if next_token.is_punct or next_token.is_space:
-                    continue
-
                 if is_number(next_token):
                     numbers_found += 1
                 
@@ -74,7 +86,10 @@ def mask_entity_text(text):
         
         # If credit card details were masked, look for CVV/expiry keywords
         if mask_credit_card_details and token.text.lower() in sensitive_keywords:
-            next_tokens = doc[i + 1:i + 36]
+            # Find the index of the token after the next 36 non-punctuation tokens
+            end_idx = find_next_token_index(doc, i + 1, 36)
+            next_tokens = doc[i + 1:end_idx]
+            
             numbers_to_mask = 0
             for next_token in next_tokens:
                 if is_number(next_token) or is_month(next_token):
