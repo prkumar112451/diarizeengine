@@ -11,3 +11,4 @@ uvicorn
 aiofiles
 spacy==3.7.2
 python-multipart
+silero-vad
