@@ -14,6 +14,8 @@ import json
 import gc
 import torch
 from pii_masking import mask_transcript
+import bisect
+from silero_vad import load_silero_vad, read_audio, get_speech_timestamps
 
 os.environ['TORCH_USE_CUDA_DSA'] = '1'
 
@@ -34,6 +36,7 @@ YOUR_HF_TOKEN = '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'
 model = whisperx.load_model("small", device, compute_type=compute_type, asr_options=asr_options, language=language_in_use)
 model_a, metadata = whisperx.load_align_model(language_code=language_in_use, device=device)
 diarize_model = whisperx.DiarizationPipeline(use_auth_token=YOUR_HF_TOKEN, device=device)
+vad_model = load_silero_vad()
 
 # Configuration for thread pool
 max_concurrent_tasks = 1
@@ -197,7 +200,171 @@ def process_transcription(audio_path: str):
         # Clear GPU memory and run garbage collection
         torch.cuda.empty_cache()
         gc.collect()
+
+def get_vad_range(audio_path):
+    vad_model = load_silero_vad()
+    wav = read_audio(audio_path)
+    speech_timestamps = get_speech_timestamps(
+      wav,
+      vad_model,
+      return_seconds=True,  # Return speech timestamps in seconds (default is samples)
+    )
+    return speech_timestamps
+    
+def find_vad_interval(vad_times, time_point):
+    """
+    Uses binary search to find the closest VAD interval just smaller than time_point.
+    """
+    # Convert time_point to float, in case it's a string
+    time_point = float(time_point)
+    
+    # Extract only the 'start' times from vad_times for binary search
+    start_times = [float(vad['start']) for vad in vad_times]
+    
+    # Perform binary search to find the closest interval
+    try:
+        idx = bisect.bisect_right(start_times, time_point) - 1
+        print(f"Closest interval index: {idx}")
+    except Exception as e:
+        print(f"Error during binary search: {e}")
+    
+    return idx if idx >= 0 else None
+
+
+
+def assign_speaker_to_word(word_start, word_end, vad_left, vad_right):
+    """
+    Assign a speaker (SPEAKER_01 or SPEAKER_02) to a word based on its time range using binary search.
+    If no interval fully contains the word, the speaker with the closest interval is assigned.
+    """
+    # Helper function to compute the distance between word and VAD interval
+    def compute_distance(vad_start, vad_end, word_start, word_end):
+        if word_end < vad_start:  # word is before the vad interval
+            return vad_start - word_end
+        elif word_start > vad_end:  # word is after the vad interval
+            return word_start - vad_end
+        else:  # word overlaps with the vad interval
+            return 0
+
+    try:
+        # Find the closest VAD intervals for left (SPEAKER_01)
+        left_start_idx = find_vad_interval(vad_left, word_start)
+        left_end_idx = find_vad_interval(vad_left, word_end)
+
+        left_closest_distance = float('inf')
+        left_speaker = None
+
+        # Iterate through VAD intervals between these indices for SPEAKER_01
+        if left_start_idx is not None and left_end_idx is not None:
+            for i in range(left_start_idx, left_end_idx + 1):
+                vad_start = vad_left[i]['start']
+                vad_end = vad_left[i]['end']
+                if vad_start <= word_end and word_start <= vad_end:
+                    return "SPEAKER_01"
+                else:
+                    # Compute the distance if not overlapping
+                    distance = compute_distance(vad_start, vad_end, word_start, word_end)
+                    if distance < left_closest_distance:
+                        left_closest_distance = distance
+                        left_speaker = "SPEAKER_01"
+    except Exception as e:
+        print(f"Error processing SPEAKER_01 VAD intervals: {e}")
+
+    try:
+        # Find the closest VAD intervals for right (SPEAKER_02)
+        right_start_idx = find_vad_interval(vad_right, word_start)
+        right_end_idx = find_vad_interval(vad_right, word_end)
+
+        right_closest_distance = float('inf')
+        right_speaker = None
+
+        # Iterate through VAD intervals between these indices for SPEAKER_02
+        if right_start_idx is not None and right_end_idx is not None:
+            for i in range(right_start_idx, right_end_idx + 1):
+                vad_start = vad_right[i]['start']
+                vad_end = vad_right[i]['end']
+                if vad_start <= word_end and word_start <= vad_end:
+                    return "SPEAKER_02"
+                else:
+                    # Compute the distance if not overlapping
+                    distance = compute_distance(vad_start, vad_end, word_start, word_end)
+                    if distance < right_closest_distance:
+                        right_closest_distance = distance
+                        right_speaker = "SPEAKER_02"
+    except Exception as e:
+        print(f"Error processing SPEAKER_02 VAD intervals: {e}")
+
+    # If no interval contains the word, assign the speaker with the closest interval
+    try:
+        if left_closest_distance < right_closest_distance:
+            return left_speaker if left_speaker else "UNKNOWN"
+        else:
+            return right_speaker if right_speaker else "UNKNOWN"
+    except Exception as e:
+        print(f"Error determining closest speaker: {e}")
+        return "UNKNOWN"
+
+
+
+
+def update_speaker_labels(full_transcription, vad_left, vad_right):
+    """
+    Updates the transcription with speaker labels and breaks segments based on speaker change
+    or large time gaps (> 2 seconds), optimized with binary search on VAD intervals.
+    """
+    updated_transcription = []
+    current_segment = []
+    current_speaker = None
+    try:
+        for idx, segment in enumerate(full_transcription):
+            words = segment['words']
+
+            for word_idx, word_info in enumerate(words):
+                word_start = word_info['start']
+                word_end = word_info['end']
+                word_text = word_info['word']
+                # Assign speaker to the current word based on the VAD results using binary search
+                word_speaker = assign_speaker_to_word(word_start, word_end, vad_left, vad_right)
+                # If the current segment is empty, start a new one
+                if not current_segment:
+                    current_segment.append(word_info)
+                    current_speaker = word_speaker
+                    continue
+    
+                # Calculate the time gap between this word and the last word in the current segment
+                last_word_end = current_segment[-1]['end']
+                time_gap = word_start - last_word_end
+    
+                # Check for segment break conditions
+                if time_gap > 2.0 or word_speaker != current_speaker:
+                    # Finalize the current segment
+                    updated_transcription.append({
+                        'start': current_segment[0]['start'],
+                        'end': current_segment[-1]['end'],
+                        'text': " ".join([word['word'] for word in current_segment]),
+                        'speaker': current_speaker
+                    })
+                    # Start a new segment
+                    current_segment = [word_info]
+                    current_speaker = word_speaker
+                else:
+                    # Continue adding to the current segment
+                    current_segment.append(word_info)
         
+        # Don't forget to add the last segment
+        if current_segment:
+            updated_transcription.append({
+                'start': current_segment[0]['start'],
+                'end': current_segment[-1]['end'],
+                'text': " ".join([word['word'] for word in current_segment]),
+                'speaker': current_speaker
+            })
+
+    except Exception as e:
+        print("Error in finally block for request %s: %s", request_id, e)
+    
+    return updated_transcription
+    
 def transcribe_audio_worker(audio_path, request_id, webhook_url, mask, language_code, use_diarization_model):
     global model, model_a, metadata, diarize_model, language_in_use
 
@@ -211,9 +378,10 @@ def transcribe_audio_worker(audio_path, request_id, webhook_url, mask, language_
             logger.info("Processing stereo audio for request %s", request_id)
             left_path, right_path = split_stereo(audio_path)
             logger.info("Split the audio into 2 parts")
-            output_left = process_transcription(left_path)
-            output_right = process_transcription(right_path)
-            merged_segments = merge_segments(output_left, output_right)
+            vad_left = get_vad_range(left_path)
+            vad_right = get_vad_range(right_path)
+            full_transcription = process_transcription(audio_path)
+            merged_segments = update_speaker_labels(full_transcription['segments'], vad_left, vad_right)
             final_result = {'segments': merged_segments}
         else:
             logger.info('Processing mono audio for request')
