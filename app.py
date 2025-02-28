@@ -304,17 +304,16 @@ def assign_speaker_to_word(word_start, word_end, vad_left, vad_right):
         print(f"Error determining closest speaker: {e}")
         return "UNKNOWN"
 
-
-
-
 def update_speaker_labels(full_transcription, vad_left, vad_right):
     """
     Updates the transcription with speaker labels and breaks segments based on speaker change
     or large time gaps (> 2 seconds), optimized with binary search on VAD intervals.
+    Each word in the segment retains its own speaker label.
     """
     updated_transcription = []
     current_segment = []
     current_speaker = None
+
     try:
         for idx, segment in enumerate(full_transcription):
             words = segment['words']
@@ -323,25 +322,31 @@ def update_speaker_labels(full_transcription, vad_left, vad_right):
                 word_start = word_info['start']
                 word_end = word_info['end']
                 word_text = word_info['word']
+                
                 # Assign speaker to the current word based on the VAD results using binary search
                 word_speaker = assign_speaker_to_word(word_start, word_end, vad_left, vad_right)
+                
+                # Add speaker information to the word
+                word_info['speaker'] = word_speaker
+                
                 # If the current segment is empty, start a new one
                 if not current_segment:
                     current_segment.append(word_info)
                     current_speaker = word_speaker
                     continue
-    
+
                 # Calculate the time gap between this word and the last word in the current segment
                 last_word_end = current_segment[-1]['end']
                 time_gap = word_start - last_word_end
-    
-                # Check for segment break conditions
+
+                # Check for segment break conditions (speaker change or time gap)
                 if time_gap > 2.0 or word_speaker != current_speaker:
                     # Finalize the current segment
                     updated_transcription.append({
                         'start': current_segment[0]['start'],
                         'end': current_segment[-1]['end'],
                         'text': " ".join([word['word'] for word in current_segment]),
+                        'words': current_segment,  # Retain the words array with speaker labels
                         'speaker': current_speaker
                     })
                     # Start a new segment
@@ -350,18 +355,19 @@ def update_speaker_labels(full_transcription, vad_left, vad_right):
                 else:
                     # Continue adding to the current segment
                     current_segment.append(word_info)
-        
+
         # Don't forget to add the last segment
         if current_segment:
             updated_transcription.append({
                 'start': current_segment[0]['start'],
                 'end': current_segment[-1]['end'],
                 'text': " ".join([word['word'] for word in current_segment]),
+                'words': current_segment,  # Retain the words array with speaker labels
                 'speaker': current_speaker
             })
 
     except Exception as e:
-        print("Error in finally block for request %s: %s", request_id, e)
+        print(f"Error occurred: {e}")
     
     return updated_transcription
     
