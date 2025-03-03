@@ -54,7 +54,7 @@ COPY . /app
 RUN pip install --no-cache-dir -r requirements.txt
 
 RUN pip install faster-whisper==1.0.0
-RUN pip install ctranslate2==4.4.0
+RUN pip install ctranslate2==3.24.0
 
 # Install the spaCy English model
 RUN python -m spacy download en_core_web_sm
