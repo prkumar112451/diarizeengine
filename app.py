@@ -16,6 +16,8 @@ import torch
 from pii_masking import mask_transcript
 import bisect
 from silero_vad import load_silero_vad, read_audio, get_speech_timestamps
+import librosa
+from whisperx_pyannote import Pyannote
 
 os.environ['TORCH_USE_CUDA_DSA'] = '1'
 
@@ -32,17 +34,48 @@ asr_options = {"suppress_numerals": True}
 language_in_use = "en"
 YOUR_HF_TOKEN = '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'
 
+#diarization config
+vad_onset = 0.5
+vad_offset = 0.3
+chunk_size = 30
+
 # Load models
 model = whisperx.load_model("small", device, compute_type=compute_type, asr_options=asr_options, language=language_in_use)
 model_a, metadata = whisperx.load_align_model(language_code=language_in_use, device=device)
 diarize_model = whisperx.DiarizationPipeline(use_auth_token=YOUR_HF_TOKEN, device=device)
-vad_model = load_silero_vad()
+#vad_model = load_silero_vad()
+vad_model = Pyannote(device=device, vad_onset=vad_onset, vad_offset=vad_offset)
 
 # Configuration for thread pool
 max_concurrent_tasks = 1
 executor = concurrent.futures.ThreadPoolExecutor(max_workers=max_concurrent_tasks)
 task_queue = Queue()
 
+def diarization(audio_path):
+    waveform, sample_rate = librosa.load(audio_path, sr=16000)
+    audio = {"waveform": torch.from_numpy(waveform).unsqueeze(0), "sample_rate": sample_rate}    
+    vad_segments = vad_model(audio)
+    vad_segments = Pyannote.merge_chunks(
+        vad_segments, chunk_size, onset=vad_onset)
+    result = convert_pyannote_to_silero_format(vad_segments)
+    return result
+    
+def convert_pyannote_to_silero_format(pyannote_output):
+    # This function converts each 'segments' key in the pyannote output
+    # into the format expected for silero VAD outputs.
+    silero_format_segments = []
+
+    for chunk in pyannote_output:
+        # Extract each sub-segment within 'segments'
+        for seg in chunk['segments']:
+            segment_dict = {
+                'start': seg[0],  # Start of the sub-segment
+                'end': seg[1]    # End of the sub-segment
+            }
+            silero_format_segments.append(segment_dict)
+
+    return silero_format_segments
+    
 def remove_duplicate_segments(segments):
     filtered_segments = []
     for i, segment in enumerate(segments):
