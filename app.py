@@ -293,13 +293,13 @@ def assign_speaker_to_word(word_start, word_end, vad_left, vad_right):
                 vad_start = vad_left[i]['start']
                 vad_end = vad_left[i]['end']
                 if vad_start <= word_end and word_start <= vad_end:
-                    return "SPEAKER_01"
+                    return "SPEAKER_00"
                 else:
                     # Compute the distance if not overlapping
                     distance = compute_distance(vad_start, vad_end, word_start, word_end)
                     if distance < left_closest_distance:
                         left_closest_distance = distance
-                        left_speaker = "SPEAKER_01"
+                        left_speaker = "SPEAKER_00"
     except Exception as e:
         print(f"Error processing SPEAKER_01 VAD intervals: {e}")
 
@@ -317,13 +317,13 @@ def assign_speaker_to_word(word_start, word_end, vad_left, vad_right):
                 vad_start = vad_right[i]['start']
                 vad_end = vad_right[i]['end']
                 if vad_start <= word_end and word_start <= vad_end:
-                    return "SPEAKER_02"
+                    return "SPEAKER_01"
                 else:
                     # Compute the distance if not overlapping
                     distance = compute_distance(vad_start, vad_end, word_start, word_end)
                     if distance < right_closest_distance:
                         right_closest_distance = distance
-                        right_speaker = "SPEAKER_02"
+                        right_speaker = "SPEAKER_01"
     except Exception as e:
         print(f"Error processing SPEAKER_02 VAD intervals: {e}")
 
@@ -417,9 +417,9 @@ def transcribe_audio_worker(audio_path, request_id, webhook_url, mask, language_
             logger.info("Processing stereo audio for request %s", request_id)
             left_path, right_path = split_stereo(audio_path)
             logger.info("Split the audio into 2 parts")
-            vad_left = get_vad_range(left_path)
-            vad_right = get_vad_range(right_path)
-            full_transcription = process_transcription(audio_path)
+            vad_left = diarization(left_path)
+            vad_right = diarization(right_path)
+            full_transcription = process_transcription(audio_path)            
             merged_segments = update_speaker_labels(full_transcription['segments'], vad_left, vad_right)
             final_result = {'segments': merged_segments}
         else:
