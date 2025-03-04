@@ -1,5 +1,4 @@
 # Use the NVIDIA CUDA base image with Python 3.10, CUDA 11.8, and cuDNN 8
-FROM nvidia/cuda:11.8.0-cudnn8-devel-ubuntu20.04
 FROM nvidia/cuda:12.1.0-cudnn8-devel-ubuntu20.04
 
 # Set environment variables to configure tzdata non-interactively
