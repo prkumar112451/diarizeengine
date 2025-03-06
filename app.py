@@ -52,6 +52,18 @@ max_concurrent_tasks = 1
 executor = concurrent.futures.ThreadPoolExecutor(max_workers=max_concurrent_tasks)
 task_queue = Queue()
 
+def remove_garbage(transcription):
+    try:
+        # Check if there is exactly one segment and it has less than or equal to 3 words
+        if len(transcription) == 1 and len(transcription[0]["words"]) <= 3:
+            return []
+        else:
+            return transcription
+    except Exception as e:
+        print(f"An error occurred while processing the transcription: {e}")
+        # You can choose to return None or an empty list in case of an error
+        return []
+        
 def denoise_audio(audio_path):
     try:
         # Check if GPU is available
@@ -312,7 +324,13 @@ def process_transcription(audio_path: str):
             aligned_result['segments'] = adjust_segment_times(aligned_result['segments'])
         except Exception as e:
             logger.error("Error processing subprocessing: %s", e) 
-        
+
+        try:
+            logger.info("stage 4")
+            aligned_result['segments'] = remove_garbage(aligned_result['segments'])
+        except Exception as e:
+            logger.error("Error processing subprocessing: %s", e) 
+            
         return {'segments': aligned_result['segments']}
     
     except Exception as e:
@@ -545,6 +563,7 @@ def transcribe_audio_worker(audio_path, request_id, webhook_url, mask, language_
             try:
                 final_result['segments'] = process_segment_words(final_result['segments'])
                 final_result['segments'] = remove_duplicate_segments_withspeaker_withtext(final_result['segments'])
+                final_result['segments'] = remove_garbage(final_result['segments'])
             except Exception as e:
                 logger.error("Error cleaning up segments: %s", e)
             
