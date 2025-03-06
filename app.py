@@ -109,12 +109,21 @@ def convert_pyannote_to_silero_format(pyannote_output):
 
     return silero_format_segments
     
-def remove_duplicate_segments(segments):
+def remove_duplicate_segments_withspeaker_withtext(segments):
     filtered_segments = []
     for i, segment in enumerate(segments):
         if i == 0 or not (
             segment['text'] == segments[i - 1]['text'] and 
             segment['speaker'] == segments[i - 1]['speaker']
+        ):
+            filtered_segments.append(segment)
+    return filtered_segments
+
+def remove_duplicate_segments_withtext(segments):
+    filtered_segments = []
+    for i, segment in enumerate(segments):
+        if i == 0 or not (
+            segment['text'] == segments[i - 1]['text']
         ):
             filtered_segments.append(segment)
     return filtered_segments
@@ -201,29 +210,34 @@ def improve_transcription(transcription):
     new_segments = []
     
     for segment in transcription:
-        words = segment["words"]
-        current_segment = {"start": words[0]["start"], "end": None, "text": "", "words": []}
-        
-        for i in range(len(words) - 1):
-            current_word = words[i]
-            next_word = words[i + 1]
+        try:
+            words = segment["words"]
+            current_segment = {"start": words[0]["start"], "end": None, "text": "", "words": []}
             
-            current_segment["words"].append(current_word)
-            current_segment["text"] += current_word["word"] + " "
-            
-            # Check if the gap between current and next word is more than 2 seconds
-            if next_word["start"] - current_word["end"] > 2.0:
-                current_segment["end"] = current_word["end"]
-                new_segments.append(current_segment)
+            for i in range(len(words) - 1):
+                current_word = words[i]
+                next_word = words[i + 1]
                 
-                # Start a new segment
-                current_segment = {"start": next_word["start"], "end": None, "text": "", "words": []}
+                current_segment["words"].append(current_word)
+                current_segment["text"] += current_word["word"] + " "
+                
+                # Check if the gap between current and next word is more than 2 seconds
+                if next_word["start"] - current_word["end"] > 2.0:
+                    current_segment["end"] = current_word["end"]
+                    new_segments.append(current_segment)
+                    
+                    # Start a new segment
+                    current_segment = {"start": next_word["start"], "end": None, "text": "", "words": []}
+            
+            # Add the last word and finalize the segment
+            current_segment["words"].append(words[-1])
+            current_segment["text"] += words[-1]["word"]
+            current_segment["end"] = words[-1]["end"]
+            new_segments.append(current_segment)
         
-        # Add the last word and finalize the segment
-        current_segment["words"].append(words[-1])
-        current_segment["text"] += words[-1]["word"]
-        current_segment["end"] = words[-1]["end"]
-        new_segments.append(current_segment)
+        except Exception as e:
+            print(f"An error occurred while processing the segment: {e}")
+            # You can add any additional error handling logic here
     
     return new_segments
 
@@ -242,9 +256,26 @@ def process_transcription(audio_path: str):
         
         # Improve segments and return the result
         try:
+            logger.info("stage 1")
             aligned_result['segments'] = process_segment_words(aligned_result['segments'])
+        except Exception as e:
+            logger.error("Error processing subprocessing: %s", e) 
+
+        try:
+            logger.info("stage 2")
             aligned_result['segments'] = remove_duplicate_segments(aligned_result['segments'])
+        except Exception as e:
+            logger.error("Error processing subprocessing: %s", e) 
+
+        try:
+            logger.info("stage 3")
             aligned_result['segments'] = improve_transcription(aligned_result['segments'])
+        except Exception as e:
+            logger.error("Error processing subprocessing: %s", e) 
+
+        try:
+            logger.info("stage 4")
+            aligned_result['segments'] = adjust_segment_times(aligned_result['segments'])
         except Exception as e:
             logger.error("Error processing subprocessing: %s", e) 
         
@@ -478,7 +509,7 @@ def transcribe_audio_worker(audio_path, request_id, webhook_url, mask, language_
 
             try:
                 final_result['segments'] = process_segment_words(final_result['segments'])
-                final_result['segments'] = remove_duplicate_segments(final_result['segments'])
+                final_result['segments'] = remove_duplicate_segments_withspeaker_withtext(final_result['segments'])
             except Exception as e:
                 logger.error("Error cleaning up segments: %s", e)
             
