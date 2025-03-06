@@ -222,7 +222,7 @@ def improve_transcription(transcription):
                 current_segment["text"] += current_word["word"] + " "
                 
                 # Check if the gap between current and next word is more than 2 seconds
-                if next_word["start"] - current_word["end"] > 2.0:
+                if next_word["start"] - current_word["end"] > 1.5:
                     current_segment["end"] = current_word["end"]
                     new_segments.append(current_segment)
                     
