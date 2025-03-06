@@ -18,7 +18,8 @@ import bisect
 from silero_vad import load_silero_vad, read_audio, get_speech_timestamps
 import librosa
 from whisperx_pyannote import Pyannote
-
+import soundfile as sf
+import noisereduce as nr
 os.environ['TORCH_USE_CUDA_DSA'] = '1'
 
 app = FastAPI()
@@ -51,6 +52,38 @@ max_concurrent_tasks = 1
 executor = concurrent.futures.ThreadPoolExecutor(max_workers=max_concurrent_tasks)
 task_queue = Queue()
 
+def denoise_audio(audio_path):
+    try:
+        # Check if GPU is available
+        if torch.cuda.is_available():
+            logger.info("GPU is available, using it for noise reduction.")
+            use_gpu = True
+        else:
+            logger.info("GPU is not available, using CPU for noise reduction.")
+            use_gpu = False
+        
+        # Read the audio file
+        data, rate = sf.read(audio_path)
+        
+        # Reduce noise with GPU if available, otherwise use CPU
+        reduced_noise = nr.reduce_noise(
+            y=data, sr=rate, n_std_thresh_stationary=1.5, 
+            stationary=True, use_torch=use_gpu
+        )
+        
+        # Generate the new file path by replacing '.wav' with '_denoise.wav'
+        denoise_file_path = audio_path.replace('.wav', '_denoise.wav')
+        
+        # Write the denoised audio to the new file
+        sf.write(denoise_file_path, reduced_noise, rate)
+        
+        logger.info(f"Denoised audio saved to: {denoise_file_path}")
+        return denoise_file_path
+
+    except Exception as e:
+        logger.error(f"An error occurred: {e}")
+        return audio_path
+        
 def diarization(audio_path):
     waveform, sample_rate = librosa.load(audio_path, sr=16000)
     audio = {"waveform": torch.from_numpy(waveform).unsqueeze(0), "sample_rate": sample_rate}    
@@ -417,10 +450,14 @@ def transcribe_audio_worker(audio_path, request_id, webhook_url, mask, language_
             logger.info("Processing stereo audio for request %s", request_id)
             left_path, right_path = split_stereo(audio_path)
             logger.info("Split the audio into 2 parts")
-            vad_left = diarization(left_path)
-            vad_right = diarization(right_path)
-            full_transcription = process_transcription(audio_path)            
-            merged_segments = update_speaker_labels(full_transcription['segments'], vad_left, vad_right)
+            logger.info(f'left path is {left_path}')
+            left_path = denoise_audio(left_path)
+            logger.info(f'denoise left path is {left_path}')
+            right_path = denoise_audio(right_path)
+            
+            output_left = process_transcription(left_path)
+            output_right = process_transcription(right_path)
+            merged_segments = merge_segments(output_left, output_right)
             final_result = {'segments': merged_segments}
         else:
             logger.info('Processing mono audio for request')
