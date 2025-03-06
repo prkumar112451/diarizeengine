@@ -529,7 +529,8 @@ def transcribe_audio_worker(audio_path, request_id, webhook_url, mask, language_
             if language_code != language_in_use:
                 model = whisperx.load_model("small", device, compute_type=compute_type, asr_options=asr_options, language=language_code)
                 language_in_use = language_code
-            
+
+            audio_path = denoise_audio(audio_path)
             audio_data = whisperx.load_audio(audio_path)
             result = model.transcribe(audio_data, batch_size=batch_size)
 
