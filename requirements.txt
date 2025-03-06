@@ -13,3 +13,5 @@ spacy==3.7.2
 python-multipart
 silero-vad
 librosa
+soundfile==0.13.1
+noisereduce==3.0.3
