@@ -241,6 +241,40 @@ def improve_transcription(transcription):
     
     return new_segments
 
+def adjust_segment_times(segments):
+    new_segments = []
+    for segment in segments:
+        try:
+            words = segment["words"]
+            
+            # Adjust the first word's start time if needed
+            first_word = words[0]
+            if first_word["end"] - first_word["start"] > 2.0:
+                first_word["start"] = first_word["end"] - 0.1  # Update start to be end - 100 milliseconds
+
+            # Adjust the last word's end time if needed
+            last_word = words[-1]
+            if last_word["end"] - last_word["start"] > 2.0:
+                last_word["end"] = last_word["start"] + 0.1  # Update end to be start + 100 milliseconds
+
+            # Update segment times based on adjusted word times
+            segment["start"] = words[0]["start"]
+            segment["end"] = words[-1]["end"]
+
+            # Add the modified segment to the new list
+            new_segments.append(segment)
+
+        except KeyError as e:
+            print(f"KeyError: Missing key {e} in segment {segment}")
+        except IndexError as e:
+            print(f"IndexError: Issue with words array in segment {segment}")
+        except Exception as e:
+            print(f"Unexpected error in segment {segment}: {e}")
+    
+    return new_segments
+
+
+
 def process_transcription(audio_path: str):
     try:
         logger.info("Loading the audio")
@@ -263,7 +297,7 @@ def process_transcription(audio_path: str):
 
         try:
             logger.info("stage 2")
-            aligned_result['segments'] = remove_duplicate_segments(aligned_result['segments'])
+            aligned_result['segments'] = remove_duplicate_segments_withtext(aligned_result['segments'])
         except Exception as e:
             logger.error("Error processing subprocessing: %s", e) 
 
